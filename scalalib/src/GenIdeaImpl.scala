@@ -15,7 +15,7 @@ import mill.{T, scalalib}
 import os.{Path, RelPath}
 import scala.util.Try
 import scala.xml.{Elem, MetaData, NodeSeq, Null, UnprefixedAttribute}
-import mill.scalalib.GenIdeaModule.{IdeaConfigFile, JavaFacet}
+import mill.scalalib.GenIdeaModule.{IdeaConfigFile, JavaFacet, IdeaOptions}
 
 case class GenIdeaImpl(evaluator: Evaluator,
                        ctx: Log with Home,
@@ -30,7 +30,7 @@ case class GenIdeaImpl(evaluator: Evaluator,
   def run(): Unit = {
 
     val pp = new scala.xml.PrettyPrinter(999, 4)
-    val jdkInfo = extractCurrentJdk(cwd / ".idea" / "misc.xml").getOrElse(("JDK_1_8", "1.8 (1)"))
+    val jdkInfo = extractCurrentJdk(cwd / ".idea" / "misc.xml").getOrElse(("JDK_1_8", "1.8"))
 
     ctx.log.info("Analyzing modules ...")
     val layout = xmlFileLayout(evaluator, rootModule, jdkInfo, Some(ctx))
@@ -130,7 +130,8 @@ case class GenIdeaImpl(evaluator: Evaluator,
                              libraryClasspath: Loose.Agg[Path],
                              facets: Seq[JavaFacet],
                              configFileContributions: Seq[IdeaConfigFile],
-                             compilerOutput: Path
+                             compilerOutput: Path,
+                             ideaOptions: IdeaOptions
                              )
 
     def resolveTasks: Seq[Task[ResolvedModule]] = for((path, mod) <- modules) yield {
@@ -180,6 +181,10 @@ case class GenIdeaImpl(evaluator: Evaluator,
         mod.ideaCompileOutput()
       }
 
+      val ideaOptions = T.task{
+        mod.ideaOptions()
+      }
+
       T.task {
         val resolvedCp: Loose.Agg[PathRef] = externalDependencies()
         // unused, but we want to trigger sources, to have them available (automatically)
@@ -192,6 +197,7 @@ case class GenIdeaImpl(evaluator: Evaluator,
         val resolvedFacets: Seq[JavaFacet] = facets()
         val resolvedConfigFileContributions: Seq[IdeaConfigFile] = configFileContributions()
         val resolvedCompilerOutput = compilerOutput()
+        val resolvedIdeaOptions = ideaOptions()
 
         ResolvedModule(
           path = path,
@@ -205,7 +211,8 @@ case class GenIdeaImpl(evaluator: Evaluator,
           libraryClasspath = resolvedLibraryCp.map(_.path),
           facets = resolvedFacets,
           configFileContributions = resolvedConfigFileContributions,
-          compilerOutput = resolvedCompilerOutput.path
+          compilerOutput = resolvedCompilerOutput.path,
+          ideaOptions = resolvedIdeaOptions
         )
       }
     }
@@ -344,7 +351,9 @@ case class GenIdeaImpl(evaluator: Evaluator,
       Tuple2(
         os.rel/".idea"/"modules.xml",
         allModulesXmlTemplate(
-          modules.map { case (segments, mod) => moduleName(segments) }.sorted
+          resolved
+            .filter(!_.ideaOptions.skipIdea)
+            .map { m => moduleName(m.path) }.sorted
         )
       ),
       Tuple2(
@@ -375,13 +384,14 @@ case class GenIdeaImpl(evaluator: Evaluator,
         libraryXmlTemplate(name, path, sources, librariesProperties.getOrElse(path, Loose.Agg.empty)))
     }
 
-    val moduleFiles = resolved.map{ case ResolvedModule(path, resolvedDeps, mod, _, _, _, _, facets, _, compilerOutput) =>
+    val moduleFiles = resolved.map{ case ResolvedModule(path, resolvedDeps, mod, _, _, _, _, facets, _, compilerOutput, _) =>
       val Seq(
         resourcesPathRefs: Seq[PathRef],
         sourcesPathRef: Seq[PathRef],
         generatedSourcePathRefs: Seq[PathRef],
-        allSourcesPathRefs: Seq[PathRef]
-      ) = evaluator.evaluate(Agg(mod.resources, mod.sources, mod.generatedSources, mod.allSources)).values
+        allSourcesPathRefs: Seq[PathRef],
+        packagePrefix: Option[String]
+      ) = evaluator.evaluate(Agg(mod.resources, mod.sources, mod.generatedSources, mod.allSources, mod.packagePrefix)).values
 
       val generatedSourcePaths = generatedSourcePathRefs.map(_.path)
       val normalSourcePaths = (allSourcesPathRefs.map(_.path).toSet -- generatedSourcePaths.toSet).toSeq
@@ -399,6 +409,7 @@ case class GenIdeaImpl(evaluator: Evaluator,
         Strict.Agg.from(resourcesPathRefs.map(_.path)),
         Strict.Agg.from(normalSourcePaths),
         Strict.Agg.from(generatedSourcePaths),
+        packagePrefix,
         compilerOutput,
         Strict.Agg.from(resolvedDeps.map(pathToLibName)).iterator.toSeq,
         Strict.Agg.from(mod.moduleDeps.map((_, None)) ++ mod.compileModuleDeps.map((_, Some("PROVIDED"))))
@@ -495,6 +506,8 @@ case class GenIdeaImpl(evaluator: Evaluator,
           <excludeFolder url="file://$MODULE_DIR$/../project" />
           <excludeFolder url="file://$MODULE_DIR$/../target" />
           <excludeFolder url="file://$MODULE_DIR$/../out" />
+          <excludeFolder url="file://$MODULE_DIR$/../.idea" />
+          <excludeFolder url="file://$MODULE_DIR$/../.idea_modules" />
         </content>
         <exclude-output/>
         <orderEntry type="inheritedJdk" />
@@ -553,12 +566,14 @@ case class GenIdeaImpl(evaluator: Evaluator,
                         resourcePaths: Strict.Agg[os.Path],
                         normalSourcePaths: Strict.Agg[os.Path],
                         generatedSourcePaths: Strict.Agg[os.Path],
+                        packagePrefix: Option[String],
                         compileOutputPath: os.Path,
                         libNames: Seq[String],
                         depNames: Seq[Scoped[String]],
                         isTest: Boolean,
                         facets: Seq[GenIdeaModule.JavaFacet]
                        ): Elem = {
+    val packagePrefixAttr: Option[xml.Text] = packagePrefix.map(xml.Text(_))
     <module type="JAVA_MODULE" version={"" + ideaConfigVersion}>
       <component name="NewModuleRootManager">
         {
@@ -583,7 +598,7 @@ case class GenIdeaImpl(evaluator: Evaluator,
           for (normalSourcePath <- normalSourcePaths.iterator.toSeq.sorted) yield {
             val rel = relify(normalSourcePath)
             <content url={"file://$MODULE_DIR$/" + rel}>
-              <sourceFolder url={"file://$MODULE_DIR$/" + rel} isTestSource={isTest.toString} />
+              <sourceFolder url={"file://$MODULE_DIR$/" + rel} isTestSource={isTest.toString} packagePrefix={packagePrefixAttr}/>
             </content>
           }
         }
@@ -592,7 +607,7 @@ case class GenIdeaImpl(evaluator: Evaluator,
           for (resourcePath <- resourcePaths.iterator.toSeq.sorted) yield {
               val rel = relify(resourcePath)
               <content url={"file://$MODULE_DIR$/" + rel}>
-                <sourceFolder url={"file://$MODULE_DIR$/" + rel} type={resourceType} />
+                <sourceFolder url={"file://$MODULE_DIR$/" + rel} type={resourceType}  packagePrefix={packagePrefixAttr}/>
               </content>
           }
         }

@@ -29,7 +29,7 @@ trait GenIdeaModule extends Module {
   def ideaConfigFiles(ideaConfigVersion: Int): Command[Seq[IdeaConfigFile]] = T.command { Seq[IdeaConfigFile]() }
 
   def ideaCompileOutput: T[PathRef] = T.persistent { PathRef(T.dest / "classes") }
-
+  def ideaOptions: T[IdeaOptions] = T.persistent { IdeaOptions( skipIdea) }
 }
 
 object GenIdeaModule {
@@ -48,6 +48,11 @@ object GenIdeaModule {
   final case class IdeaConfigFile(name: String, component: String, config: Seq[Element])
   object IdeaConfigFile {
     implicit def rw: ReadWriter[IdeaConfigFile] = macroRW
+  }
+
+  final case class IdeaOptions(skipIdea: Boolean = false)
+  object IdeaOptions {
+    implicit def rw: ReadWriter[IdeaOptions] = macroRW
   }
 
 }

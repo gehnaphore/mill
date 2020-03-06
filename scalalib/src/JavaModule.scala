@@ -162,6 +162,12 @@ trait JavaModule extends mill.Module
     )().flatten
   }
 
+  def transitiveUnmanagedClasspath: T[Agg[PathRef]] = T{
+    Task.traverse(moduleDeps)(m =>
+      T.task{m.unmanagedClasspath() ++ m.transitiveUnmanagedClasspath()}
+    )().flatten
+  }
+
   /**
     * What platform suffix to use for publishing, e.g. `_sjs` for Scala.js
     * projects
@@ -203,6 +209,8 @@ trait JavaModule extends mill.Module
     * or can refer to files generated from other targets
     */
   def generatedSources = T{ Seq.empty[PathRef] }
+
+  def packagePrefix: T[Option[String]] = None
 
   /**
     * The folders containing all source files fed into the compiler
@@ -252,6 +260,7 @@ trait JavaModule extends mill.Module
     transitiveLocalClasspath() ++
     resources() ++
     unmanagedClasspath() ++
+    transitiveUnmanagedClasspath() ++
     resolvedIvyDeps()
   }
 
@@ -266,6 +275,7 @@ trait JavaModule extends mill.Module
   def upstreamAssemblyClasspath = T {
     transitiveLocalClasspath() ++
     unmanagedClasspath() ++
+    transitiveUnmanagedClasspath() ++
     resolvedRunIvyDeps()
   }
 
