@@ -123,7 +123,7 @@ class MainRunner(val config: ammonite.main.Config,
 
             stateCache = Some(Evaluator.State(eval.rootModule, eval.classLoaderSig, eval.workerCache, interpWatched))
             val watched = () => {
-              val alreadyStale = evalWatches.exists(p => p.sig != PathRef(p.path, p.quick).sig)
+              val alreadyStale = evalWatches.exists(p => p.isStale)
               // If the file changed between the creation of the original
               // `PathRef` and the current moment, use random junk .sig values
               // to force an immediate re-run. Otherwise calculate the

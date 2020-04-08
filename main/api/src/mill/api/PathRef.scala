@@ -10,8 +10,10 @@ import upickle.default.{ReadWriter => RW}
  * on the contents of the filesystem underneath it. Used to ensure filesystem
  * changes can bust caches which are keyed off hashcodes.
  */
-case class PathRef(path: os.Path, quick: Boolean, sig: Int) {
+case class PathRef(base: Option[os.Path], relpath: os.RelPath, quick: Boolean, sig: Int) {
   override def hashCode(): Int = sig
+  def path = base.getOrElse(os.root) / relpath
+  def isStale: Boolean = PathRef.forPath(base, relpath, quick).sig != sig
 }
 
 object PathRef {
@@ -22,7 +24,9 @@ object PathRef {
    *              If `false` the digest is created of the files content.
    * @return
    */
-  def apply(path: os.Path, quick: Boolean = false): PathRef = {
+  def apply(path: os.Path, quick: Boolean = false): PathRef = forPath(None,path.relativeTo(os.root),quick)
+
+  def forPath(base: Option[os.Path], relPath: os.RelPath, quick: Boolean): PathRef = {
     val sig = {
       val isPosix = path.wrapped.getFileSystem.supportedFileAttributeViews().contains("posix")
       val digest = MessageDigest.getInstance("MD5")
@@ -33,9 +37,10 @@ object PathRef {
         digest.update((value >>> 8).toByte)
         digest.update(value.toByte)
       }
+      val path = base.getOrElse(os.root) / relPath
       if (os.exists(path)) {
         for ((path, attrs) <- os.walk.attrs(path, includeTarget = true, followLinks = true)) {
-          digest.update(path.toString.getBytes)
+          digest.update(relPath.toString.getBytes)
           if (!attrs.isDir) {
             if (isPosix) {
               updateWithInt(os.perms(path).value)
@@ -55,8 +60,11 @@ object PathRef {
       java.util.Arrays.hashCode(digest.digest())
 
     }
-    new PathRef(path, quick, sig)
+    new PathRef(base, relPath, quick, sig)
   }
+
+  def forPath(path: os.Path): PathRef = forPath(None, path.relativeTo(os.root), false)
+  def forPath(path: os.Path, quick: Boolean): PathRef = forPath(None, path.relativeTo(os.root), quick)
 
   /**
     * Default JSON formatter for [[PathRef]].
@@ -65,12 +73,20 @@ object PathRef {
     p => {
       (if (p.quick) "qref" else "ref") + ":" +
         String.format("%08x", p.sig: Integer) + ":" +
-        p.path.toString()
+        p.base.fold((os.root / p.relpath).toString())(base => base.toString() + ":" + p.relpath.toString())
     },
     s => {
-      val Array(prefix, hex, path) = s.split(":", 3)
+      val parts = s.split(":", 4)
+      val prefix = parts(0)
+      val hex = parts(1)
+      val (base,relPath) = if (parts.size == 3) {
+        (None, os.Path(parts(2)).relativeTo(os.root))
+      } else {
+        (Some(os.Path(parts(2))), os.RelPath(parts(3)))
+      }
       PathRef(
-        os.Path(path),
+        base,
+        relPath,
         prefix match { case "qref" => true case "ref" => false },
         // Parsing to a long and casting to an int is the only way to make
         // round-trip handling of negative numbers work =(

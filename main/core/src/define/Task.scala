@@ -126,7 +126,7 @@ object Target extends TargetGenerated with Applicative.Applyer[Task, Task, Resul
     val wrapped =
       for (value <- values.toList)
       yield Applicative.impl0[Task, PathRef, mill.api.Ctx](c)(
-        reify(value.splice.map(PathRef(_))).tree
+        reify(value.splice.map(p => PathRef.forPath(Some(ctx.splice.millSourcePath), p.relativeTo(ctx.splice.millSourcePath), false))).tree
       ).tree
 
     mill.moduledefs.Cacher.impl0[Sources](c)(
@@ -165,7 +165,7 @@ object Target extends TargetGenerated with Applicative.Applyer[Task, Task, Resul
                   (ctx: c.Expr[mill.define.Ctx]): c.Expr[Source] = {
     import c.universe._
     mill.moduledefs.Cacher.impl0[Source](c)(
-      reify(new Source(makeT(Nil, _ => value.splice.map(PathRef(_))), ctx.splice))
+      reify(new Source(makeT(Nil, _ => value.splice.map(p => PathRef.forPath(Some(ctx.splice.millSourcePath), p.relativeTo(ctx.splice.millSourcePath), false))), ctx.splice))
     )
   }
 
