@@ -61,6 +61,12 @@ case class MillConfig(
   )
   threadCountRaw: Option[Int],
   @arg(
+    name = "meta-log",
+    short = 'm',
+    doc = "Output build metadata as JSON to a file at this path"
+  )
+  metaLog: Option[String],
+  @arg(
     name = "rest",
     doc = """The name of the targets you want to build, followed by any parameters
       you wish to pass to those targets."""
@@ -197,7 +203,8 @@ object MillMain {
                 systemProperties = systemProps,
                 threadCount = threadCount,
                 ringBell = config.ringBell.value,
-                wd = os.pwd
+                wd = os.pwd,
+                metaLogPath = metaLog.map(os.Path(_))
               )
 
               if (mill.main.client.Util.isJava9OrAbove) {

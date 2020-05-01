@@ -26,14 +26,17 @@ case class MockedLookup(am: File => Optional[CompileAnalysis]) extends PerClassp
     Locate.definesClass(classpathEntry)
 }
 
-class ZincProblem(base: xsbti.Problem) extends Problem {
-  override def category: String = base.category()
-
-  override def severity: Severity = base.severity() match {
+object ZincProblem {
+  def xsbtiToMillSeverity(sev: xsbti.Severity) = sev match {
     case xsbti.Severity.Info => mill.api.Info
     case xsbti.Severity.Warn => mill.api.Warn
     case xsbti.Severity.Error => mill.api.Error
   }
+}
+class ZincProblem(base: xsbti.Problem) extends Problem {
+  override def category: String = base.category()
+
+  override def severity: Severity = ZincProblem.xsbtiToMillSeverity(base.severity())
 
   override def message: String = base.message()
 
@@ -410,6 +413,13 @@ class ZincWorkerImpl(compilerBridge: Either[
         override def logInfo(problem: xsbti.Problem): Unit = {
           r.logInfo(new ZincProblem(problem))
           super.logInfo(problem)
+        }
+
+        override def printSummary(): Unit = {
+          import scala.collection.JavaConverters._
+          super.printSummary()
+          val success = count.getOrDefault(xsbti.Severity.Error, 0) == 0
+          r.logEnd(success, count.asScala.map { case (k,v) => ZincProblem.xsbtiToMillSeverity(k) -> v }.toMap)
         }
       }
     }

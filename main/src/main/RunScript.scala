@@ -1,5 +1,6 @@
 package mill.main
 
+import java.io.{OutputStream, PrintStream}
 import java.nio.file.NoSuchFileException
 import ammonite.interp.Interpreter
 import ammonite.runtime.SpecialClassLoader
@@ -26,16 +27,22 @@ object RunScript{
                 instantiateInterpreter: => Either[(Res.Failing, Seq[(ammonite.interp.Watchable, Long)]), ammonite.interp.Interpreter],
                 scriptArgs: Seq[String],
                 stateCache: Option[Evaluator.State],
-                log: PrintLogger,
+                log0: PrintLogger,
                 env : Map[String, String],
                 keepGoing: Boolean,
                 systemProperties: Map[String, String],
-                threadCount: Option[Int])
+                threadCount: Option[Int],
+                metaLog: Option[MetaLog])
   : (Res[(Evaluator, Seq[PathRef], Either[String, Seq[ujson.Value]])], Seq[(ammonite.interp.Watchable, Long)]) = {
 
     systemProperties.foreach {case (k,v) =>
       System.setProperty(k, v)
     }
+
+    val log = metaLog.map { ml =>
+      ml.startBuild()
+      ml.proxyTo(log0)
+    }.getOrElse(log0)
 
     val (evalState, interpWatched) = stateCache match{
       case Some(s) if watchedSigUnchanged(s.watched) => Res.Success(s) -> s.watched
@@ -58,8 +65,21 @@ object RunScript{
 
     val evalRes =
       for(s <- evalState)
-      yield new Evaluator(home, wd / 'out, wd / 'out, s.rootModule, log,
-        s.classLoaderSig, s.workerCache, env, failFast = !keepGoing, threadCount = threadCount)
+      yield {
+        new Evaluator(
+          home,
+          wd / 'out,
+          wd / 'out,
+          s.rootModule,
+          log,
+          s.classLoaderSig,
+          s.workerCache,
+          env,
+          failFast = !keepGoing,
+          threadCount = threadCount,
+          problemReporter = metaLog.map(_.reporterFor)
+        )
+      }
 
     val evaluated = for{
       evaluator <- evalRes
@@ -67,6 +87,8 @@ object RunScript{
     } yield {
       (evaluator, evalWatches, res.map(_.flatMap(_._2)))
     }
+    metaLog.foreach(_.finishBuild())
+
     (evaluated, interpWatched.toSeq)
   }
 

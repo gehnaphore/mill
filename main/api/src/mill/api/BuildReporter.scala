@@ -36,11 +36,15 @@ object  DummyTestReporter extends TestReporter {
   * build output like compiler warnings and errors
   */
 trait BuildProblemReporter {
+  def logStart(name: String): Unit = {}
+
   def logError(problem: Problem): Unit
 
   def logWarning(problem: Problem): Unit
 
   def logInfo(problem: Problem): Unit
+
+  def logEnd(success: Boolean, counts: Map[Severity,Int]): Unit = {}
 
   def printSummary(): Unit
 }

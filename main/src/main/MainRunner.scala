@@ -10,6 +10,7 @@ import mill.util.PrintLogger
 
 import scala.annotation.tailrec
 import ammonite.runtime.ImportHook
+import mill.api.BuildProblemReporter
 import mill.define.Segments
 
 /**
@@ -31,7 +32,8 @@ class MainRunner(val config: ammonite.main.Config,
                  systemProperties: Map[String, String],
                  threadCount: Option[Int],
                  ringBell: Boolean,
-                 wd: os.Path)
+                 wd: os.Path,
+                 metaLogPath: Option[os.Path])
   extends ammonite.MainRunner(
     config, outprintStream, errPrintStream,
     stdIn, outprintStream, errPrintStream,
@@ -85,11 +87,12 @@ class MainRunner(val config: ammonite.main.Config,
   val colored = config.core.color.getOrElse(mainInteractive)
 
   override val colors = if(colored) Colors.Default else Colors.BlackWhite
-  override def runScript(scriptPath: os.Path, scriptArgs: List[String]) =
-    watchLoop2(
+  override def runScript(scriptPath: os.Path, scriptArgs: List[String]) = {
+    val r = watchLoop2(
       isRepl = false,
       printing = true,
       mainCfg => {
+        val metaLog = metaLogPath.map(new MetaLog(_, debugEnabled = debugLog))
         val logger = PrintLogger(
           colored,
           disableTicker,
@@ -114,10 +117,11 @@ class MainRunner(val config: ammonite.main.Config,
           env,
           keepGoing = keepGoing,
           systemProperties = systemProperties,
-          threadCount = threadCount
+          threadCount = threadCount,
+          metaLog = metaLog
         )
 
-        result match{
+        val r = result match {
           case Res.Success(data) =>
             val (eval, evalWatches, res) = data
 
@@ -140,8 +144,13 @@ class MainRunner(val config: ammonite.main.Config,
             (Res(res), () => interpWatched ++ watched())
           case _ => (result, () => interpWatched)
         }
+
+        metaLog.foreach(_.close())
+        r
       }
     )
+    r
+  }
 
   override def handleWatchRes[T](res: Res[T], printing: Boolean) = {
     res match{

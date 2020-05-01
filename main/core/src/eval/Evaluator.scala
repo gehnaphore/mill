@@ -45,6 +45,8 @@ case class Labelled[T](task: NamedTask[T],
   *                 If `false`, it tries to evaluate all tasks, running longer and reporting possibly more than one failure.
   * @param threadCount If a [[Some]] the explicit number of threads to use for parallel task evaluation,
   *                    or [[None]] to use n threads where n is the number of available logical processors.
+  * @param problemReporter An optional default BuildProblemReporter factory function to use for modules compiled
+  *                        during this evaluation pass.
   */
 case class Evaluator(
   home: os.Path,
@@ -56,12 +58,14 @@ case class Evaluator(
   workerCache: mutable.Map[Segments, (Int, Any)] = mutable.Map.empty,
   env: Map[String, String] = Evaluator.defaultEnv,
   failFast: Boolean = true,
-  threadCount: Option[Int] = Some(1)
+  threadCount: Option[Int] = Some(1),
+  problemReporter: Option[Int => Option[BuildProblemReporter]] = None
 ) {
 
   val effectiveThreadCount: Int = this.threadCount.getOrElse(Runtime.getRuntime().availableProcessors())
 
   import Evaluator.Evaluated
+  import Evaluator.NoProblemReporter
 
   val classLoaderSignHash = classLoaderSig.hashCode()
 
@@ -70,14 +74,16 @@ case class Evaluator(
     * @param reporter A function that will accept a module id and provide a listener for build problems in that module
     * @param testReporter Listener for test events like start, finish with success/error
     */
+
   def evaluate(goals: Agg[Task[_]],
-               reporter: Int => Option[BuildProblemReporter] = (int: Int) => Option.empty[BuildProblemReporter],
+               reporter: Int => Option[BuildProblemReporter] = NoProblemReporter,
                testReporter: TestReporter = DummyTestReporter,
                logger: ColorLogger = baseLogger): Evaluator.Results = {
     os.makeDir.all(outPath)
 
-    if(effectiveThreadCount > 1) parallelEvaluate(goals, effectiveThreadCount, logger, reporter, testReporter)
-    else sequentialEvaluate(goals, logger, reporter, testReporter)
+    val finalReporter = if (reporter != NoProblemReporter) reporter else problemReporter.getOrElse(NoProblemReporter)
+    if(effectiveThreadCount > 1) parallelEvaluate(goals, effectiveThreadCount, logger, finalReporter, testReporter)
+    else sequentialEvaluate(goals, logger, finalReporter, testReporter)
   }
 
   def sequentialEvaluate(goals: Agg[Task[_]],
@@ -589,6 +595,7 @@ object Evaluator{
   val currentEvaluator = new ThreadLocal[mill.eval.Evaluator]
 
   val defaultEnv: Map[String, String] = System.getenv().asScala.toMap
+  val NoProblemReporter = (int: Int) => Option.empty[BuildProblemReporter]
 
   case class Paths(out: os.Path,
                    dest: os.Path,
