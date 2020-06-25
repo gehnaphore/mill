@@ -9,6 +9,8 @@ import mill.scalalib._
 import mill.scalalib.publish._
 import mill.modules.Jvm.createAssembly
 
+import $file.repo, repo.FBPublisher
+
 object Deps {
 
   object Scalajs_0_6 {
@@ -99,6 +101,65 @@ trait MillPublishModule extends PublishModule{
   )
 
   def javacOptions = Seq("-source", "1.8", "-target", "1.8")
+
+  def fbReleaseRepoUri: String = "https://maven.thefacebook.com/nexus/content/repositories/libs-releases-local"
+  def fbSnapshotRepoUri: String = "https://maven.thefacebook.com/nexus/content/repositories/libs-snapshots-local"
+
+  def publishToNexus(
+    nexusCreds: String,
+    gpgPassphrase: String = null,
+    gpgKeyName: String = null,
+    signed: Boolean = true,
+    readTimeout: Int = 60000,
+    connectTimeout: Int = 5000,
+    release: Boolean,
+    awaitTimeout: Int = 120 * 1000,
+    stagingRelease: Boolean = true): define.Command[Unit] = T.command {
+    val PublishModule.PublishData(artifactInfo, artifacts) = publishArtifacts()
+    new FBPublisher(
+      fbReleaseRepoUri,
+      fbSnapshotRepoUri,
+      nexusCreds,
+      Option(gpgPassphrase),
+      Option(gpgKeyName),
+      signed,
+      readTimeout,
+      connectTimeout,
+      T.log,
+      awaitTimeout,
+      stagingRelease
+    ).publish(artifacts.map{case (a, b) => (a.path, b)}, artifactInfo, release)
+  }
+  /*
+  def publishToFacebook(
+    sonatypeCreds: String,
+    logger: Logger,
+    gpgPassphrase: String = null,
+    gpgKeyName: String = null,
+    signed: Boolean = true,
+    readTimeout: Int = 60000,
+    connectTimeout: Int = 5000,
+    release: Boolean,
+    awaitTimeout: Int = 120 * 1000,
+    stagingRelease: Boolean = true,
+    forceUpdate: Boolean = false
+  ) = {
+    new FBPublisher(
+      releaseRepoUri,
+      snapshotRepoUri,
+      sonatypeCreds,
+      Option(gpgPassphrase),
+      Option(gpgKeyName),
+      signed,
+      readTimeout,
+      connectTimeout,
+      logger,
+      awaitTimeout,
+      stagingRelease,
+      forceUpdate
+    ).publishAll(release, artifacts: _*)
+  }
+*/
 }
 trait MillApiModule extends MillPublishModule with ScalaModule{
   def scalaVersion = T{ "2.13.2" }
@@ -881,7 +942,7 @@ def publishVersion = T.input{
       val commitsSinceLastTag =
         os.proc('git, "rev-list", gitHead(), "--not", latestTaggedVersion, "--count").call().out.trim.toInt
 
-      (latestTaggedVersion, s"$latestTaggedVersion-$commitsSinceLastTag-${gitHead().take(6)}$dirtySuffix")
+      //(latestTaggedVersion, s"$latestTaggedVersion-$commitsSinceLastTag-${gitHead().take(6)}$dirtySuffix")
       (latestTaggedVersion, "0.6.2-ta")
   }
 }
@@ -913,3 +974,4 @@ def uploadToGithub(authKey: String) = T.command{
 
   upload.apply(launcher().path, releaseTag, label, authKey)
 }
+

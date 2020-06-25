@@ -3,6 +3,7 @@ package mill.modules
 
 import coursier.Repository
 import mill.BuildInfo
+import coursier.maven.MavenRepository
 import mill.api.{IO, PathRef}
 import mill.util.Ctx
 import mill.api.Loose
@@ -62,9 +63,14 @@ object Util {
 
   def millProjectModule(key: String,
                         artifact: String,
-                        repositories: Seq[Repository],
+                        repositories0: Seq[Repository],
                         resolveFilter: os.Path => Boolean = _ => true,
                         artifactSuffix: String = "_2.13") = {
+    val repositories = sys.env.get("MILL_WORKER_REPO").fold(repositories0) { url =>
+      (repositories0.takeWhile(!_.isInstanceOf[MavenRepository]) :+
+        MavenRepository(url)) ++
+        repositories0.dropWhile(!_.isInstanceOf[MavenRepository])
+    }
     millProperty(key) match {
       case Some(localPath) =>
         mill.api.Result.Success(
