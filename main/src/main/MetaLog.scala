@@ -50,8 +50,10 @@ class MetaLog(dest: os.Path, debugEnabled: Boolean = false) {
   var _outStream: OutputStream = _
   var _outPrinter: PrintStream = _
 
-  def proxyTo(log: mill.api.Logger): mill.api.Logger = new mill.api.Logger {
+  def proxyTo(log: mill.util.ColorLogger): mill.util.ColorLogger = new mill.util.ColorLogger {
     override def colored = false
+
+    override def colors = log.colors
 
     override lazy val errorStream = log.errorStream
     override lazy val outputStream = log.outputStream
