@@ -28,6 +28,7 @@ object PathRef {
 
   def forPath(base: Option[os.Path], relPath: os.RelPath, quick: Boolean): PathRef = {
     val sig = {
+      val path = base.getOrElse(os.root) / relPath
       val isPosix = path.wrapped.getFileSystem.supportedFileAttributeViews().contains("posix")
       val digest = MessageDigest.getInstance("MD5")
       val digestOut = new DigestOutputStream(DummyOutputStream, digest)
@@ -37,7 +38,6 @@ object PathRef {
         digest.update((value >>> 8).toByte)
         digest.update(value.toByte)
       }
-      val path = base.getOrElse(os.root) / relPath
       if (os.exists(path)) {
         for ((path, attrs) <- os.walk.attrs(path, includeTarget = true, followLinks = true)) {
           digest.update(relPath.toString.getBytes)

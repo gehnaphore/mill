@@ -403,6 +403,8 @@ case class GenIdeaImpl(evaluator: Evaluator,
 
       val isTest = mod.isInstanceOf[TestModule]
 
+      val moduleSet = mod.moduleDeps.toSet
+
       val elem = moduleXmlTemplate(
         mod.intellijModulePath,
         scalaVersionOpt,
@@ -412,7 +414,7 @@ case class GenIdeaImpl(evaluator: Evaluator,
         packagePrefix,
         compilerOutput,
         Strict.Agg.from(resolvedDeps.map(pathToLibName)).iterator.toSeq,
-        Strict.Agg.from(mod.moduleDeps.map((_, None)) ++ mod.compileModuleDeps.map((_, Some("PROVIDED"))))
+        Loose.Agg.from(mod.moduleDeps.map((_, None)) ++ mod.compileModuleDeps.filterNot(moduleSet).map((_, Some("PROVIDED"))))
           .filter(!_._1.skipIdea)
           .map{ case(v,s) => Scoped(moduleName(moduleLabels(v)), s) }
           .iterator.toSeq

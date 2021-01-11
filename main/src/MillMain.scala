@@ -204,7 +204,7 @@ object MillMain {
                 threadCount = threadCount,
                 ringBell = config.ringBell.value,
                 wd = os.pwd,
-                metaLogPath = metaLog.map(os.Path(_))
+                metaLogPath = config.metaLog.map(os.Path(_))
               )
 
               if (mill.main.client.Util.isJava9OrAbove) {

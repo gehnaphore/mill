@@ -943,7 +943,7 @@ def publishVersion = T.input{
         os.proc('git, "rev-list", gitHead(), "--not", latestTaggedVersion, "--count").call().out.trim.toInt
 
       //(latestTaggedVersion, s"$latestTaggedVersion-$commitsSinceLastTag-${gitHead().take(6)}$dirtySuffix")
-      (latestTaggedVersion, "0.7.3-ta")
+      (latestTaggedVersion, "0.9.3-ta")
   }
 }
 
