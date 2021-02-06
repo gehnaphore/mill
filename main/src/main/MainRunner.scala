@@ -1,6 +1,5 @@
 package mill.main
 import java.io.{InputStream, PrintStream}
-
 import ammonite.Main
 import ammonite.interp.{Interpreter, Preprocessor}
 import ammonite.util.Util.CodeSource
@@ -12,6 +11,7 @@ import scala.annotation.tailrec
 import ammonite.runtime.ImportHook
 import mill.api.BuildProblemReporter
 import mill.define.Segments
+import mill.watch.WatchService
 
 /**
   * Customized version of [[ammonite.MainRunner]], allowing us to run Mill
@@ -44,16 +44,20 @@ class MainRunner(val config: ammonite.main.Config,
 
   override def watchAndWait(watched: Seq[(ammonite.interp.Watchable, Long)]) = {
     val (watchedPaths, watchedValues) = watched.partitionMap {
-      case (ammonite.interp.Watchable.Path(p), _) => Left(())
-      case (_, _) => Right(())
+      case (p: ammonite.interp.Watchable.Path, t) => Left((p,t))
+      case x => Right(x)
     }
-    val watchedValueStr = if (watchedValues.isEmpty) "" else s" and ${watchedValues.size} other values"
-    printInfo(s"Watching for changes to ${watchedPaths.size} paths$watchedValueStr... (Ctrl-C to exit)")
-    def statAll() = watched.forall{ case (file, lastMTime) =>
-      file.poll() == lastMTime
-    }
+    val watchedValueStr =
+      if (watchedValues.isEmpty) ""
+      else s" and ${watchedValues.size} other values"
+    printInfo(
+      s"Watching for changes to ${watchedPaths.size} paths$watchedValueStr... (Ctrl-C to exit)")
+
+    val watchFunc =
+      WatchService.watcherForPathsAndValues(watchedPaths, watchedValues)
+
     setIdle(true)
-    while(statAll()) Thread.sleep(100)
+    watchFunc()
     setIdle(false)
   }
 
