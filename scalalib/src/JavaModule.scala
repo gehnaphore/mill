@@ -210,8 +210,6 @@ trait JavaModule extends mill.Module
     */
   def generatedSources = T{ Seq.empty[PathRef] }
 
-  def packagePrefix: T[Option[String]] = None
-
   /**
     * The folders containing all source files fed into the compiler
     */

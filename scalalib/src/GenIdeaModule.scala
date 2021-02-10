@@ -50,7 +50,11 @@ object GenIdeaModule {
     implicit def rw: ReadWriter[IdeaConfigFile] = macroRW
   }
 
-  final case class IdeaOptions(skipIdea: Boolean = false)
+  final case class IdeaOptions(
+    skipIdea: Boolean = false,
+    packagePrefix: Option[String] = None,
+    excludeSourceDirs: Boolean = false
+  )
   object IdeaOptions {
     implicit def rw: ReadWriter[IdeaOptions] = macroRW
   }
